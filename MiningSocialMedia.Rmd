@@ -1,0 +1,79 @@
+---
+title: "Mining Social Media"
+author: "Tucker Doud"
+date: "March 8, 2016"
+output: 
+  html_document: 
+    theme: spacelab
+---
+
+```{r Setup, include=FALSE}
+setwd("~/GitHub/TwitterAnalysis")
+```
+
+##Introduction
+With the proliferation of data being generated in the social media realm, Data Analysts have started to exploit this vast text mine for insight. One such mine is [Twitter](https://twitter.com/), the incredibly popular micro-blogging website. The following analysis is a short entry into mining and analyzing twitter posts.  
+
+For this exercise I have used the [R Statistical Programming Languange](https://youtu.be/TR2bHSJ_eck) which has several packages that make this process a much easier.
+```{r LoadTools, message=FALSE, warning=FALSE}
+library(twitteR)
+library(tm)
+library(wordcloud)
+```
+##Data Mining
+The `twitteR` package allows one to extract tweets, and associated metadata, directly into R from the Twitter API. Note that you must first have a Twitter account and set up a Twitter application to access the API (see [HERE](https://dev.twitter.com/) for more information on this topic). But after this is done, the task of extracting tweets becomes easy.
+```{r Keys, message=FALSE, warning=FALSE, include=FALSE}
+apiKey <- "Ek6MyTxLnxH5YkmPAN4cePDYd"
+apiSecret <- "gobxYII9kJBpqvvQLf5V0G9W3MOcE0tRjD9SbAUsdkYQotOFje"
+token <- "254334772-qsyNi38s6gMsTXxG6e1dCOKMzVX1mkPZIZkMOqeJ"
+tokSecret <- "YWQajMaR1vsNmFUjGEwWJ77Q9cGiW3v26U2CUuFaCg0Ja"
+```
+For this analysis I will extract 500 tweets with *#vanre* as the search term. I live in Vancouver, BC Canada. As of this writing the cost of housing continues to be a hot political topic due alleged foreign investment driving up house prices. *#vanre* is a common hash tag for Vancouver real estate tweets. The following code gets the tweets driectly from Twitter.
+```{r GetTweets, results='hide', cache=TRUE}
+setup_twitter_oauth(apiKey, apiSecret, token, tokSecret)
+tweets <- searchTwitter("#vanre", n= 500, since = "2016-02-17")
+txt <- sapply(tweets, function(x) x$getText()) #extracts text only
+```
+##Analysis
+Now that I have the tweets, I can do some minor data cleaning such as removing hyperlinks, HTML elements, and fix any other issues that came up during the data munging process.
+```{r Cleaning}
+#Need iconv to correct potential issues with emoji
+txt <- iconv(txt, "latin1", "ASCII", sub = "")
+txt <- gsub("http(s?)([^ ]*)", " ", txt, ignore.case = T) #Remove links
+txt <- gsub("&amp", "and", txt) #remove html '&amp'
+```
+The tweets are now imported and cleaned up. The text analysis phase becomes simplified using the `tm` package written for R. First, I create a corpus which is a collection of documents (in this case each tweet is a document). The corpus is the main structure for managing documents in the `tm` package. After I have the corpus created, I can use the tools built in to the `tm` package to analyze the text.
+```{r CreateCorpus}
+corp <- Corpus(VectorSource(txt)) #Create corpus
+
+moreStopWords <- c("bcpoli", "vanpoli", "cdnpoli", "craigslist", "real", 
+                   "estate", "yvrre", "vanre", "vancouver", "housing", "house",
+                   "home", "homes", "didnt", "cant") #Add more stop words
+
+# Create a term document matrix
+ctrl <- list(removePunctuation= list(preserve_intra_word_dashes = T),
+             tolower= T,
+             stopwords= c(stopwords(kind = "en"), moreStopWords),
+             removeNumbers= T)
+tdm <- TermDocumentMatrix(x= corp, control= ctrl)
+```
+Once the data is in a matrix form the `tm` package has functions to allow for basic frequency analysis of words.
+```{r TextAnalysis}
+findFreqTerms(tdm, 20) #Words with over 20 hits
+
+# Extract word frequency counts from the tdm and convert to data frame
+wrdFreqs <- sort(rowSums(as.matrix(tdm)), decreasing= T)
+wrdFreqsDF <- data.frame(word= names(wrdFreqs), 
+                         freq= wrdFreqs, 
+                         stringsAsFactors= F, row.names= NULL)
+```
+The output above shows the words in all of the tweets with over 20 instances.  
+
+##Visualize
+After we extract a data frame of word counts, I can use the `wordcloud` package to visualize the words frequently used in all of the tweets. The bigger the word the more frequently it was used.
+```{r Visualize, fig.height=9, fig.width=9}
+wordcloud(words= wrdFreqsDF$word, freq= wrdFreqsDF$freq, scale = c(3, 0.5), 
+          random.order= F, min.freq= 5, colors= brewer.pal(8, "Dark2"))
+```
+
+And the result is a short text mining, analysis, and visualization exercise from the Twitter micro-blogging site. As you can see, words like *crisis* and *vacancy* are prominent within the tweets about Vancouver's real estate market. I have extracted tweets from the last month when a prominent politician - David Eby - has been promoting a town hall meeting to discuss the housing situation. Notice that his name tops the list for word counts.
